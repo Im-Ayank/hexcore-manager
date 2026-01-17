@@ -1,0 +1,1 @@
+# hexcore-manager
