@@ -1,5 +1,5 @@
-require("dotenv").config();
 const { Client, GatewayIntentBits, Partials } = require("discord.js");
+const config = require("./config");
 
 const client = new Client({
   intents: [
@@ -13,8 +13,10 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-client.once("ready", () => {
-  console.log(`Hexcore Manager logged in as ${client.user.tag}`);
+const { Events } = require("discord.js");
+
+client.once(Events.ClientReady, (c) => {
+  console.log(`Hexcore Manager logged in as ${c.user.tag}`);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(config.discord.token);
