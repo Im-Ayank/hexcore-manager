@@ -1,6 +1,11 @@
 const { Client, GatewayIntentBits, Partials } = require("discord.js");
 const config = require("./config");
 
+const loadCommands = require("./handlers/command.handler");
+const loadEvents = require("./handlers/event.handler");
+const loadPrefix = require("./handlers/prefix.handler");
+const registerSlash = require("./handlers/slash.register");
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -13,10 +18,13 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-const { Events } = require("discord.js");
-
-client.once(Events.ClientReady, (c) => {
-  console.log(`Hexcore Manager logged in as ${c.user.tag}`);
-});
+loadCommands(client);
+loadEvents(client);
+loadPrefix(client);
 
 client.login(config.discord.token);
+
+// register slash commands AFTER ready
+client.once("ready", async () => {
+  await registerSlash(client);
+});
