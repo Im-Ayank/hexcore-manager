@@ -9,7 +9,8 @@ module.exports = async (client) => {
 
     commands.push({
       name: cmd.name,
-      description: cmd.description
+      description: cmd.description,
+      options: cmd.options || []
     });
   }
 
