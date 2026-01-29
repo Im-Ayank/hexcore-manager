@@ -13,9 +13,15 @@ model Guild {
   premiumTier       Int      @default(0)
   premiumExpiresAt  DateTime?
   loggingEnabled    Boolean  @default(false)
+
+  muteRoleId        String?
+  appealChannelIds  String[] @default([])
+  appealCategoryIds String[] @default([])
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
 
 model User {
   id        String   @id
