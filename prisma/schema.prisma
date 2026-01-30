@@ -49,3 +49,13 @@ model Appeal {
   updatedAt   DateTime @updatedAt
 }
 
+model TimedMute {
+  id        Int      @id @default(autoincrement())
+  guildId   String
+  userId    String
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@unique([guildId, userId])
+}
+

@@ -1,61 +1,16 @@
 const prisma = require("../../services/prisma");
 const { createCase } = require("../../services/moderation");
-const canModerate = require("../../utils/hierarchy");
+const parseDuration = require("../../utils/parseDuration");
 const sendAppealDM = require("../../utils/appealDM");
+const canModerate = require("../../utils/hierarchy");
 
 module.exports = {
   name: "mute",
-  description: "Mute a user (appeal-only access)",
+  description: "Mute a user (optionally timed)",
   prefix: true,
   slash: true,
   userPermissions: ["ModerateMembers"],
   botPermissions: ["ManageRoles"],
-
-  async execute({ guild, member, args, reply }) {
-    const target = guild.members.cache.get(args[0]?.replace(/\D/g, ""));
-    if (!target) return reply("User not found.");
-
-    if (!canModerate(member, target, guild)) {
-      return reply("You cannot mute this user.");
-    }
-
-    const config = await prisma.guild.findUnique({
-      where: { id: guild.id }
-    });
-
-    if (!config?.muteRoleId) {
-      return reply("Mute system not set up. Run `setupmute` first.");
-    }
-
-    const muteRole = guild.roles.cache.get(config.muteRoleId);
-    if (!muteRole) return reply("Mute role missing.");
-
-    const reason = args.slice(1).join(" ") || "No reason provided";
-
-    await target.roles.add(muteRole, reason);
-
-    await createCase({
-      guildId: guild.id,
-      userId: target.id,
-      action: "MUTE",
-      reason,
-      moderator: member.id
-    });
-
-    await sendAppealDM({
-      user: target.user,
-      guild,
-      reason
-    });
-
-    reply(`🔇 **${target.user.tag}** has been muted.`);
-  }
-};
-module.exports = {
-  name: "mute",
-  description: "Mute a user",
-  prefix: true,
-  slash: true,
   options: [
     {
       name: "user",
@@ -64,19 +19,94 @@ module.exports = {
       required: true
     },
     {
+      name: "duration",
+      description: "Duration (e.g. 10m, 2h, 1d)",
+      type: 3,
+      required: false
+    },
+    {
       name: "reason",
       description: "Reason",
-      type: 3
+      type: 3,
+      required: false
     }
   ],
-  userPermissions: ["ModerateMembers"],
 
   async execute(ctx) {
     const targetUser = ctx.getUser("user");
+    const durationInput = ctx.getString("duration");
     const reason = ctx.getString("reason") || "No reason provided";
 
-    const target = await ctx.guild.members.fetch(targetUser.id);
+    const member = await ctx.guild.members.fetch(targetUser.id);
 
-    // existing mute logic continues
+    if (!canModerate(ctx.member, member, ctx.guild)) {
+      return ctx.reply.send("❌ You cannot mute this user.");
+    }
+
+    const config = await prisma.guild.findUnique({
+      where: { id: ctx.guild.id }
+    });
+
+    const muteRole = ctx.guild.roles.cache.get(config.muteRoleId);
+    if (!muteRole) {
+      return ctx.reply.send("❌ Mute system not set up.");
+    }
+
+    const durationMs = parseDuration(durationInput);
+
+    // ❗ SAFETY CHECK
+    if (durationInput && !durationMs) {
+      return ctx.reply.send(
+        "❌ Invalid duration format. Use `10m`, `2h`, or `1d`."
+      );
+    }
+
+    await member.roles.add(muteRole, reason);
+
+    let expiresAt = null;
+
+    if (durationMs) {
+      expiresAt = new Date(Date.now() + durationMs);
+
+      await prisma.timedMute.upsert({
+        where: {
+          guildId_userId: {
+            guildId: ctx.guild.id,
+            userId: member.id
+          }
+        },
+        update: { expiresAt },
+        create: {
+          guildId: ctx.guild.id,
+          userId: member.id,
+          expiresAt
+        }
+      });
+    }
+
+    await createCase({
+      guildId: ctx.guild.id,
+      userId: member.id,
+      action: durationMs ? "TIMED_MUTE" : "MUTE",
+      reason,
+      moderator: ctx.user.id
+    });
+
+    await sendAppealDM({
+      user: member.user,
+      guild: ctx.guild,
+      reason,
+      appealInfo: durationMs
+        ? `Mute expires <t:${Math.floor(expiresAt.getTime() / 1000)}:R>`
+        : "This mute is permanent unless appealed."
+    });
+
+    return ctx.reply.send(
+      `🔇 **${member.user.tag}** muted ${
+        durationMs
+          ? `until <t:${Math.floor(expiresAt.getTime() / 1000)}:R>`
+          : "permanently"
+      }.`
+    );
   }
 };
